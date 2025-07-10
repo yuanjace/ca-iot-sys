@@ -1,0 +1,15 @@
+# Python 官方輕量級
+FROM python:3.9-slim-buster
+
+# 設定工作目錄
+WORKDIR /app
+
+# 複製 Python 腳本和依賴文件
+COPY thermometer.py .
+COPY requirements.txt .
+
+# 安裝 Python 依賴
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 運行腳本
+CMD ["python", "thermometer.py"]

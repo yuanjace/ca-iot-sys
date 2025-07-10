@@ -1,0 +1,48 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.15 # 使用 Mosquitto 官方映像
+    container_name: mosquitto_broker
+    ports:
+      - "8883:8883" # 加密 MQTT 埠 (TLS)
+    volumes:
+      # 將整個 certs 目錄映射到容器內的 /mosquitto/config/certs
+      # Mosquitto 會在 /mosquitto/config/certs/mosquitto 下找到自己的憑證
+      # 和在 /mosquitto/config/certs/root_ca 下找到用於驗證客戶端的 CA 憑證
+      - ./certs:/mosquitto/config/certs
+      - ./certs/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf # 掛載配置文件
+    command: mosquitto -c /mosquitto/config/mosquitto.conf # 指定使用配置文件
+    restart: always
+
+  device001_thermometer:
+    build:
+      context: .
+      dockerfile: Dockerfile_thermometer
+    container_name: iot_thermometer_001
+    depends_on:
+      - mosquitto
+    volumes:
+      - ./certs/device001:/app/certs/device001
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE_ID=${DEVICE1_ID}
+      - CA_CERT_PATH=${DEVICE1_CA}
+      - CLIENT_CERT_PATH=${DEVICE1_CERT}
+      - CLIENT_KEY_PATH=${DEVICE1_KEY}
+    restart: on-failure
+
+  device002_thermometer:
+    build:
+      context: .
+      dockerfile: Dockerfile_thermometer
+    container_name: iot_thermometer_002
+    depends_on:
+      - mosquitto
+    volumes:
+      - ./certs/device002:/app/certs/device002
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE_ID=${DEVICE2_ID}
+      - CA_CERT_PATH=${DEVICE2_CA}
+      - CLIENT_CERT_PATH=${DEVICE2_CERT}
+      - CLIENT_KEY_PATH=${DEVICE2_KEY}
+    restart: on-failure
