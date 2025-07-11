@@ -46,3 +46,26 @@ services:
       - CLIENT_CERT_PATH=${DEVICE2_CERT}
       - CLIENT_KEY_PATH=${DEVICE2_KEY}
     restart: on-failure
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: iot_dashboard
+    ports:
+      - "5000:5000" # 映射主機埠 5000 到容器埠 5000
+    depends_on:
+      - mosquitto
+    volumes:
+      - ./certs/device001:/app/certs/device001
+      - ./certs/device002:/app/certs/device002
+      - ./dashboard/dashboard_certs:/app/certs/dashboard
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BROKER_ADDRESS=${BROKER_ADDRESS}
+      - BROKER_PORT=${BROKER_PORT}
+      - CA_CERT_PATH=${DASHBOARD_CA}
+      - CLIENT_CERT_PATH=${DASHBOARD_CERT}
+      - CLIENT_KEY_PATH=${DASHBOARD_KEY}
+      - DEVICE_IDS=${DEVICE_IDS}
+    restart: on-failure

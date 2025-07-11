@@ -283,6 +283,70 @@ def generate_broker_cert(name, signer_key, signer_cert):
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
 
+def generate_dashboard_cert(name, signer_key, signer_cert):
+    """
+    為儀表板服務產生私鑰、CSR 及憑證，並簽署。同時將 Root CA 憑證複製到儀表板目錄。
+    如果憑證已存在且未即將過期，則不重新生成。
+    :param name:
+    :param signer_key: 用於簽署的私鑰（Root CA 或 Intermediate CA）
+    :param signer_cert: 用於簽署的憑證（Root CA 或 Intermediate CA）
+    """
+    os.makedirs(f"{name}/dashboard_certs", exist_ok=True)
+    dashboard_dir = os.path.join(name, "dashboard_certs")
+
+    key_path = os.path.join(dashboard_dir, f"{name}.key")
+    cert_path = os.path.join(dashboard_dir, f"{name}.crt")
+    csr_path = os.path.join(dashboard_dir, f"{name}.csr")
+    dashboard_ca_path = os.path.join(dashboard_dir, "root_ca.crt")
+
+    print(f"Checking dashboard certificate for {name}...")
+    if not is_certificate_expiring_soon(cert_path, EXPIRY_THRESHOLD_DAYS):
+        with open(dashboard_ca_path, "wb") as f:
+            f.write(signer_cert.public_bytes(serialization.Encoding.PEM))
+        print(f"  Dashboard certificate for {name} is current.")
+        return
+
+    print(f"Generating new dashboard certificate for {name}...")
+    key = generate_key(key_path)
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    san_entries = [DNSName(name), DNSName("localhost")]
+
+    csr = (
+        x509.CertificateSigningRequestBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)]))
+        .add_extension(SubjectAlternativeName(san_entries), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    # 4. 將 CSR 輸出
+    with open(csr_path, "wb") as f:
+        f.write(csr.public_bytes(serialization.Encoding.PEM))
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(csr.subject)
+        .issuer_name(signer_cert.subject)
+        .public_key(csr.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(
+            now + datetime.timedelta(days=validity_days)
+        )  # 儀表板憑證有效期與設備相同
+        .add_extension(SubjectAlternativeName(san_entries), critical=False)
+        .add_extension(
+            x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.CLIENT_AUTH]),
+            critical=False,
+        )  # 標註為客戶端憑證
+        .sign(signer_key, hashes.SHA256())
+    )
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+    with open(dashboard_ca_path, "wb") as f:
+        f.write(signer_cert.public_bytes(serialization.Encoding.PEM))
+
+
 if __name__ == "__main__":
     import os
 
@@ -298,5 +362,8 @@ if __name__ == "__main__":
 
     # 3. 為 MQTT Broker 生成憑證，簽署者使用 Root CA
     generate_broker_cert("mosquitto", root_key, root_cert)
+
+    # 4. 為 Dashboard 服務生成憑證，簽署者使用 Root CA
+    generate_dashboard_cert("dashboard", root_key, root_cert)
 
     print("CA and device certificates generated in 'certs' directory.")

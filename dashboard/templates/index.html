@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IoT device dashboard</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f4f4f4;
+        color: #333;
+      }
+      .container {
+        max-width: 1200px;
+        margin: auto;
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h1,
+      h2 {
+        color: #0056b3;
+      }
+      .section {
+        margin-bottom: 30px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 20px;
+      }
+      .section:last-child {
+        border-bottom: none;
+      }
+      .device-card {
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background-color: #f9f9f9;
+      }
+      .device-card h3 {
+        margin-top: 0;
+        color: #333;
+      }
+      .device-card p {
+        margin: 5px 0;
+        font-size: 0.9em;
+      }
+      .device-card .status {
+        font-weight: bold;
+      }
+      .status.valid {
+        color: green;
+      }
+      .status.expiring {
+        color: orange;
+      }
+      .status.expired {
+        color: red;
+      }
+      .log-container {
+        max-height: 400px;
+        overflow-y: scroll;
+        border: 1px solid #ddd;
+        padding: 10px;
+        background-color: #fff;
+        border-radius: 6px;
+      }
+      .log-item {
+        border-bottom: 1px dashed #eee;
+        padding: 5px 0;
+        font-size: 0.85em;
+        word-break: break-all;
+      }
+      .log-item:last-child {
+        border-bottom: none;
+      }
+      .log-item span {
+        color: #555;
+      }
+      .log-item .topic {
+        color: #007bff;
+        font-weight: bold;
+      }
+      .log-item .device_id {
+        color: #28a745;
+        font-weight: bold;
+      }
+      .log-item .temp {
+        color: #dc3545;
+        font-weight: bold;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>IoT device dashboard</h1>
+
+      <div class="section">
+        <h2>設備憑證有效期</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>設備 ID</th>
+              <th>主體 (Subject)</th>
+              <th>簽發者 (Issuer)</th>
+              <th>有效起始時間</th>
+              <th>有效結束時間</th>
+              <th>剩餘天數</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody id="certInfoTableBody">
+            {% for cert in certs_info %}
+            <tr id="cert-row-{{ cert.device_id }}">
+              <td>{{ cert.device_id }}</td>
+              <td>{{ cert.subject }}</td>
+              <td>{{ cert.issuer }}</td>
+              <td>{{ cert.not_valid_before }}</td>
+              <td>{{ cert.not_valid_after }}</td>
+              <td>
+                <span class="days-remaining">{{ cert.days_remaining }}</span>
+              </td>
+              <td>
+                <span
+                  class="status {% if cert.status == '有效' %}valid{% elif cert.status == '已過期' %}expired{% else %}expiring{% endif %}"
+                  >{{ cert.status }}</span
+                >
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>實時設備數據與日誌</h2>
+        <div id="latest-data">
+          {% for device_id in devices %}
+          <div class="device-card" id="latest-{{ device_id }}">
+            <h3>設備 {{ device_id }}</h3>
+            <p>最新溫度: <span class="temp-value">N/A</span> °C</p>
+            <p>時間戳: <span class="timestamp-value">N/A</span></p>
+          </div>
+          {% endfor %}
+        </div>
+        <h3>MQTT 日誌</h3>
+        <div class="log-container" id="mqtt-logs"></div>
+      </div>
+    </div>
+
+    <script>
+      const EXPIRY_THRESHOLD_DAYS = 30; // 需與 generate_ca_and_device_certs.py 中的配置一致
+
+      async function fetchData() {
+        try {
+          const response = await fetch("/api/data");
+          const data = await response.json();
+
+          // 更新憑證信息
+          data.certs_info.forEach((cert) => {
+            const row = document.getElementById(`cert-row-${cert.device_id}`);
+            if (row) {
+              row.querySelector(".days-remaining").textContent =
+                cert.days_remaining;
+              const statusSpan = row.querySelector(".status");
+              statusSpan.textContent = cert.status;
+              statusSpan.className = "status"; // 重置class
+              if (cert.days_remaining > EXPIRY_THRESHOLD_DAYS) {
+                statusSpan.classList.add("valid");
+              } else if (
+                cert.days_remaining > 0 &&
+                cert.days_remaining <= EXPIRY_THRESHOLD_DAYS
+              ) {
+                statusSpan.classList.add("expiring");
+              } else {
+                statusSpan.classList.add("expired");
+              }
+            }
+          });
+
+          // 更新最新設備數據
+          for (const deviceId in data.device_data) {
+            const card = document.getElementById(`latest-${deviceId}`);
+            if (card) {
+              card.querySelector(".temp-value").textContent =
+                data.device_data[deviceId].temperature;
+              // 將 UNIX 時間戳轉換為可讀日期時間
+              const date = new Date(
+                data.device_data[deviceId].timestamp * 1000
+              );
+              card.querySelector(".timestamp-value").textContent =
+                date.toLocaleString();
+            }
+          }
+
+          // 更新 MQTT 日誌
+          const logContainer = document.getElementById("mqtt-logs");
+          // 清空舊日誌
+          logContainer.innerHTML = "";
+          data.logs.forEach((log) => {
+            const logItem = document.createElement("div");
+            logItem.classList.add("log-item");
+            logItem.innerHTML = `
+                        <span>${log.timestamp}</span> - 
+                        <span class="topic">${log.topic}</span>: 
+                        <span class="device_id">${log.payload.device_id}</span>, 
+                        溫度: <span class="temp">${log.payload.temperature}</span>°C
+                    `;
+            logContainer.prepend(logItem); // 新日誌顯示在最上面
+          });
+        } catch (error) {
+          console.error("Error fetching data:", error);
+        }
+      }
+
+      // 每 3 秒刷新一次數據
+      setInterval(fetchData, 3000);
+
+      // 首次加載時獲取數據
+      document.addEventListener("DOMContentLoaded", fetchData);
+    </script>
+  </body>
+</html>
