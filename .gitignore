@@ -106,3 +106,8 @@ logs/
 .idea/
 *.swp
 *.swo
+
+# CA relate
+*.crt
+*.csr
+*.key
