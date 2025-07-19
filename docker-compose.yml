@@ -28,6 +28,8 @@ services:
       - CA_CERT_PATH=${DEVICE1_CA}
       - CLIENT_CERT_PATH=${DEVICE1_CERT}
       - CLIENT_KEY_PATH=${DEVICE1_KEY}
+      - BROKER_ADDRESS=${BROKER_ADDRESS}
+      - BROKER_PORT=${BROKER_PORT}
     restart: on-failure
 
   device002_thermometer:
@@ -45,6 +47,8 @@ services:
       - CA_CERT_PATH=${DEVICE2_CA}
       - CLIENT_CERT_PATH=${DEVICE2_CERT}
       - CLIENT_KEY_PATH=${DEVICE2_KEY}
+      - BROKER_ADDRESS=${BROKER_ADDRESS}
+      - BROKER_PORT=${BROKER_PORT}
     restart: on-failure
 
   dashboard:
